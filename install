@@ -1,0 +1,191 @@
+#!/bin/bash
+
+# global vars
+USERNAME=guest
+SKIP_GERRIT=false
+
+# constants
+HELM_VERSION="v3.7.1"
+KUBECTL_VERSION="v1.21.1"
+HELMFILE_VERSION="v0.140.1"
+
+function add_basic_software {
+    sudo apt update
+    sudo apt install -y git curl vim-gtk3 tcpdump jq dos2unix \
+        apache2-utils sshpass tree gitk mlocate maven
+    sudo wget https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64 -O /usr/bin/yq && \
+        chmod +x /usr/bin/yq
+}
+
+function add_java_software {
+    wget https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz
+    tar -xzvf jdk-17_linux-x64_bin.tar.gz
+    sudo mv jdk-17 /usr/lib/
+    rm -rf jdk-17*
+}
+
+function enable_ssh_server {
+    sudo apt install -y openssh-server
+    sudo service ssh restart
+}
+
+function generate_key_and_wait {
+    ssh-keygen
+    echo "Now copy manually the public keys in the git repos"
+    while true; do
+        read -n 1 -p "Press [y/Y] when you're done or [q/Q] to quit]" answer
+        case $answer in
+                [Yy]* ) break;;
+                [Qq]* ) exit 0;;
+                * ) echo "I said yes or quit";;
+        esac
+     done
+}
+
+function set_git_credentials {
+    git config --global user.email "$(jq '."user-email"' gerrit.json)"
+    git config --global user.name "$(jq ."user-name" gerrit.json)"
+}
+
+function clone_git_repos {
+    local target_dir
+    target_dir=$1
+    echo "target_dir: $target_dir"
+
+    local config_file
+    config_file=$2
+    echo "config_file: $config_file"
+
+    local host
+    host=$(jq -r '.host' "$config_file")
+    echo "host:" $host
+
+    local base_url
+    base_url=$(jq -r '."base-url"' "$config_file")
+    echo "base_url:" $base_url
+
+    local post_cmd
+    post_cmd=$(jq -r '."post-cmd"' "$config_file")
+    echo "post_cmd:" $post_cmd
+
+    local cwd
+    cwd=$(pwd)
+    echo "cwd: " $cwd
+
+    cat <<- EOG >> "$HOME/.ssh/config"
+Host $host
+    StrictHostKeyChecking no
+EOG
+    local families=$(jq -r '.families[] | .name' "$config_file")
+    for family in $families; do
+        echo "cloning repos for project family $family";
+        mkdir -p "$target_dir/$family"
+        pushd . > /dev/null
+        cd "$target_dir/$family"
+        local urls=$(jq -r --arg FAMILY "$family" '.families[] | select(.name==$FAMILY) | .projects[] | .url' $cwd/$config_file)
+        echo "urls: " $urls
+        for url in $urls; do
+            echo "cloning from: " "$base_url/$url"
+            git clone "$base_url/$url"
+            [ -n "$post_cmd" ] && [ "$post_cmd" != "null" ] && eval "$post_cmd"
+        done
+        popd > /dev/null
+    done
+}
+
+function generate_git_repos_dir {
+    local target_dir
+    target_dir=$1
+    mkdir -p $target_dir
+    [ $? -ne 0 ] && echo "cannot create $target_dir" && exit 1
+}
+
+function add_docker {
+    # https://docs.docker.com/engine/install/ubuntu/
+    sudo apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo \
+    "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+    $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+    # run docker as non-root
+    sudo groupadd docker
+    sudo usermod -aG docker $USERNAME
+    # docker compose
+    sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
+         sudo chmod 755 /usr/local/bin/docker-compose
+}
+
+function add_kube_helm {
+    local program
+
+    program=helm-${HELM_VERSION}-linux-amd64.tar.gz
+    wget https://get.helm.sh/${program}
+    chmod u+x $program
+    sudo mv $program /usr/local/bin/helm
+
+    curl -LO https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl
+    chmod u+x $program
+    sudo mv $program /usr/local/bin/kubectl
+
+    # install the helm diff plugin necessary for helmfile (default to latest)
+    helm plugin install https://github.com/databus23/helm-diff
+}
+
+function add_helmfile {
+    wget https://github.com/roboll/helmfile/releases/download/${HELMFILE_VERSION}/helmfile_linux_amd64
+    mv helmfile_linux_amd64 helmfile
+    chmod u+x helmfile
+    sudo mv helmfile /usr/local/bin
+}
+
+function add_extras {
+    sudo apt install libxml-simple-perl libdate-simple-perl gnuplot
+
+    wget http://www.yang-central.org/twiki/pub/Main/YangTools/yang.vim
+    sudo mv yang.vim /usr/share/vim/vim81/syntax
+}
+
+function add_cloud_software {
+    add_docker
+    add_kube_helm
+    add_helmfile
+}
+
+function parse_args {
+    while [[ $# -gt 0 ]]; do
+        key="${1}"
+        case ${key} in
+            -u|--username)
+                USERNAME="${2}"
+                shift
+                ;;
+            --skip-gerrit)
+                SKIP_GERRIT="true"
+                shift
+                ;;
+            *)    # unknown option
+                shift # past argument
+                ;;
+        esac
+    done
+}
+
+function main {
+    parse_args "$@"
+    add_basic_software
+    add_java_software
+    enable_ssh_server
+    if [ "${$SKIP_GERRIT}" == "false" ]; then
+        set_git_credentials
+        generate_key_and_wait
+        generate_git_repos_dir projects
+        clone_git_repos gerrit gerrit.json
+    fi
+    add_cloud_software
+    add_extras
+    echo "Reboot to re-evaluate group membership for docker"
+}
+
+main "$@"

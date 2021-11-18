@@ -1,0 +1,20 @@
+{
+  "name": "gerrit",
+  "user-email": "<my email>",
+  "user-name": "<my name>",
+  "host": "<gerrit hostname>",
+  "base-url": "ssh://<my login name>@<gerrit hostname>:<gerrit port>",
+  "description": "projects hosted on gerrit",
+  "families": [
+    {
+      "name": "project family name",
+      "description": "",
+      "projects": [
+        {
+          "name": "project name",
+          "url": "gerrit project url"
+        }
+      ]
+    }
+  ]
+}
