@@ -12,7 +12,7 @@ HELMFILE_VERSION="v0.140.1"
 function add_basic_software {
     sudo apt update
     sudo apt install -y git curl vim-gtk3 tcpdump jq dos2unix \
-        apache2-utils sshpass tree gitk mlocate maven
+        apache2-utils sshpass tree gitk mlocate maven net-tools
     sudo wget https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64 -O /usr/bin/yq && \
         chmod +x /usr/bin/yq
 }
