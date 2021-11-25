@@ -2,7 +2,8 @@
 
 # global vars
 USERNAME=guest
-SKIP_GERRIT=false
+GERRIT=false
+BREW=false
 
 # constants
 HELM_VERSION="v3.7.1"
@@ -12,16 +13,24 @@ HELMFILE_VERSION="v0.140.1"
 function add_basic_software {
     sudo apt update
     sudo apt install -y git curl vim-gtk3 tcpdump jq dos2unix \
-        apache2-utils sshpass tree gitk mlocate maven net-tools
+        apache2-utils sshpass tree gitk mlocate maven net-tools xz-utils
+
     sudo wget https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64 -O /usr/bin/yq && \
-        chmod +x /usr/bin/yq
+        sudo chmod +x /usr/bin/yq
+
+    wget -qO- "https://github.com/koalaman/shellcheck/releases/download/latest/shellcheck-latest.linux.x86_64.tar.xz" | tar -xJv
+    sudo cp "shellcheck-latest/shellcheck" /usr/bin/
+    rm -rf shellcheck-latest
 }
 
-function add_java_software {
-    wget https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz
-    tar -xzvf jdk-17_linux-x64_bin.tar.gz
-    sudo mv jdk-17 /usr/lib/
-    rm -rf jdk-17*
+function add_brew_software {
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> "$HOME/.profile"
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+    brew install gh
+    brew install k9s
 }
 
 function enable_ssh_server {
@@ -44,7 +53,7 @@ function generate_key_and_wait {
 
 function set_git_credentials {
     git config --global user.email "$(jq '."user-email"' gerrit.json)"
-    git config --global user.name "$(jq ."user-name" gerrit.json)"
+    git config --global user.name "$(jq '."user-name"' gerrit.json)"
 }
 
 function clone_git_repos {
@@ -58,32 +67,34 @@ function clone_git_repos {
 
     local host
     host=$(jq -r '.host' "$config_file")
-    echo "host:" $host
+    echo "host: ${host}"
 
     local base_url
     base_url=$(jq -r '."base-url"' "$config_file")
-    echo "base_url:" $base_url
+    echo "base_url: ${base_url}"
 
     local post_cmd
     post_cmd=$(jq -r '."post-cmd"' "$config_file")
-    echo "post_cmd:" $post_cmd
+    echo "post_cmd: ${post_cmd}"
 
     local cwd
     cwd=$(pwd)
-    echo "cwd: " $cwd
+    echo "cwd: $cwd"
 
     cat <<- EOG >> "$HOME/.ssh/config"
 Host $host
     StrictHostKeyChecking no
 EOG
-    local families=$(jq -r '.families[] | .name' "$config_file")
+    local families
+    local urls
+    families=$(jq -r '.families[] | .name' "$config_file")
     for family in $families; do
         echo "cloning repos for project family $family";
         mkdir -p "$target_dir/$family"
         pushd . > /dev/null
-        cd "$target_dir/$family"
-        local urls=$(jq -r --arg FAMILY "$family" '.families[] | select(.name==$FAMILY) | .projects[] | .url' $cwd/$config_file)
-        echo "urls: " $urls
+        cd "$target_dir/$family" || exit
+        urls=$(jq -r --arg FAMILY "$family" '.families[] | select(.name==$FAMILY) | .projects[] | .url' "$cwd/$config_file")
+        echo "urls: " "${urls}"
         for url in $urls; do
             echo "cloning from: " "$base_url/$url"
             git clone "$base_url/$url"
@@ -96,7 +107,7 @@ EOG
 function generate_git_repos_dir {
     local target_dir
     target_dir=$1
-    mkdir -p $target_dir
+    mkdir -p "${target_dir}"
     [ $? -ne 0 ] && echo "cannot create $target_dir" && exit 1
 }
 
@@ -122,12 +133,12 @@ function add_kube_helm {
 
     program=helm-${HELM_VERSION}-linux-amd64.tar.gz
     wget https://get.helm.sh/${program}
-    chmod u+x $program
-    sudo mv $program /usr/local/bin/helm
+    sudo tar -zxvf $program --strip-components=1 -C /usr/local/bin/ linux-amd64/helm
+    rm $program
 
     curl -LO https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl
-    chmod u+x $program
-    sudo mv $program /usr/local/bin/kubectl
+    chmod u+x kubectl
+    sudo mv kubectl /usr/local/bin/kubectl
 
     # install the helm diff plugin necessary for helmfile (default to latest)
     helm plugin install https://github.com/databus23/helm-diff
@@ -141,7 +152,7 @@ function add_helmfile {
 }
 
 function add_extras {
-    sudo apt install libxml-simple-perl libdate-simple-perl gnuplot
+    sudo apt install -y libxml-simple-perl libdate-simple-perl gnuplot
 
     wget http://www.yang-central.org/twiki/pub/Main/YangTools/yang.vim
     sudo mv yang.vim /usr/share/vim/vim81/syntax
@@ -157,12 +168,19 @@ function parse_args {
     while [[ $# -gt 0 ]]; do
         key="${1}"
         case ${key} in
+            -h|--help)
+	        help_and_exit
+                ;;
             -u|--username)
                 USERNAME="${2}"
                 shift
                 ;;
-            --skip-gerrit)
-                SKIP_GERRIT="true"
+            --gerrit)
+                GERRIT="true"
+                shift
+                ;;
+            --brew)
+                BREW="true"
                 shift
                 ;;
             *)    # unknown option
@@ -172,20 +190,30 @@ function parse_args {
     done
 }
 
+function help_and_exit {
+    echo "usage: $0 [options] -u <USERNAME>"
+    echo "  -h, --help          print this help and exit"
+    echo "  --gerrit            configure gerrit repos - needs a gerrit.json"
+    echo "  --brew              add brew and software"
+    echo "  -u <USERNAME>       USERNAME is you username in the Linux host"
+    echo "prerequisites: git"
+    exit 1
+}
+
 function main {
     parse_args "$@"
     add_basic_software
-    add_java_software
     enable_ssh_server
-    if [ "${$SKIP_GERRIT}" == "false" ]; then
+    if [ "${GERRIT}" == "true" ]; then
         set_git_credentials
         generate_key_and_wait
         generate_git_repos_dir projects
         clone_git_repos gerrit gerrit.json
     fi
+    [ "${BREW}" == "true" ] && add_brew_software
     add_cloud_software
     add_extras
-    echo "Reboot to re-evaluate group membership for docker"
+    echo "reboot to run docker as non-root"
 }
 
 main "$@"

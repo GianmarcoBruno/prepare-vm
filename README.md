@@ -1,14 +1,13 @@
 # prepare-vm
-A script for the configuration of an Ubuntu-based VM with minimal effort.
+A script for the configuration of an Ubuntu-based VM with little or no effort.
 
 It should work out of the box with:
 ```
-install [-u <USERNAME>] [--skip-gerrit]
+install [-u <USERNAME>] [--gerrit] [--brew]
 ```
-USERNAME is guest by default.
+USERNAME is assumed to be guest by default.
 
-If you do not need to clone from gerrit, then use ```--skip-gerrit```.
-Otherwise you need a file gerrit.json like this:
+If you want to install gerrit repos, you need a file gerrit.json like this:
 
 ```
 {
@@ -33,7 +32,12 @@ Otherwise you need a file gerrit.json like this:
 }
 ```
 
-The script will create a directory per project family under gerrit and
+The script will create a directory per project family under /gerrit and
 then will clone the project under that directory.
 
 You will be asked to copy manually the SSH keys in your gerrit.
+
+|  version | tested on Linux |
+| ---------| --------------- |
+| 1.0      | Ubuntu 20.04.3  |
+
