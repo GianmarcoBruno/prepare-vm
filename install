@@ -11,7 +11,6 @@ KUBECTL_VERSION="v1.21.1"
 HELMFILE_VERSION="v0.140.1"
 
 function add_basic_software {
-    sudo apt update
     sudo apt install -y git curl vim-gtk3 tcpdump jq dos2unix \
         apache2-utils sshpass tree gitk mlocate maven net-tools xz-utils
 
@@ -112,17 +111,22 @@ function generate_git_repos_dir {
 }
 
 function add_docker {
-    # https://docs.docker.com/engine/install/ubuntu/
-    sudo apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-    echo \
-    "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
-    $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    # Docker dependencies
+    sudo apt install -y apt-transport-https ca-certificates gnupg gnupg-agent lsb-release software-properties-common
+
+    # Docker official key
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+
+    # 3) Docker repository
+    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(. /etc/os-release; echo "$UBUNTU_CODENAME") stable"
+    
     sudo apt-get update
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
     # run docker as non-root
     sudo groupadd docker
     sudo usermod -aG docker $USERNAME
+
     # docker compose
     sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
          sudo chmod 755 /usr/local/bin/docker-compose
@@ -200,18 +204,21 @@ function help_and_exit {
     exit 1
 }
 
+function add_gerrit_repos {
+    set_git_credentials
+    generate_key_and_wait
+    generate_git_repos_dir projects
+    clone_git_repos gerrit gerrit.json
+}
+
 function main {
     parse_args "$@"
+    sudo apt update
     add_basic_software
     enable_ssh_server
-    if [ "${GERRIT}" == "true" ]; then
-        set_git_credentials
-        generate_key_and_wait
-        generate_git_repos_dir projects
-        clone_git_repos gerrit gerrit.json
-    fi
-    [ "${BREW}" == "true" ] && add_brew_software
     add_cloud_software
+    [ "${GERRIT}" == "true" ] && add_gerrit_repos
+    [ "${BREW}" == "true" ] && add_brew_software
     add_extras
     echo "reboot to run docker as non-root"
 }

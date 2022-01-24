@@ -37,7 +37,8 @@ then will clone the project under that directory.
 
 You will be asked to copy manually the SSH keys in your gerrit.
 
-|  version | tested on Linux |
-| ---------| --------------- |
-| 1.0      | Ubuntu 20.04.3  |
+|  version | Ubuntu                     | Mint                     |
+| ---------| -------------------------- | -------------------------|
+| 1.1      | 20.04.3 :heavy_check_mark: | 20.03 :heavy_check_mark: |
+| 1.0      | 20.04.3 :heavy_check_mark: | :x: |
 
