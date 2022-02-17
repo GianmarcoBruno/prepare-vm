@@ -5,16 +5,17 @@ USERNAME=guest
 GERRIT=false
 BREW=false
 
-# constants
-HELM_VERSION="v3.7.1"
-KUBECTL_VERSION="v1.21.1"
+# programs that do not accept just "latest"
+HELM_VERSION="v3.8.0"
 HELMFILE_VERSION="v0.140.1"
+YQ_VERSION="v4.20.1"
+DOCKER_COMPOSE_VERSION="v2.2.3"
 
 function add_basic_software {
     sudo apt install -y git curl vim-gtk3 tcpdump jq dos2unix \
         apache2-utils sshpass tree gitk mlocate maven net-tools xz-utils
 
-    sudo wget https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64 -O /usr/bin/yq && \
+    sudo wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 -O /usr/bin/yq && \
         sudo chmod +x /usr/bin/yq
 
     wget -qO- "https://github.com/koalaman/shellcheck/releases/download/latest/shellcheck-latest.linux.x86_64.tar.xz" | tar -xJv
@@ -128,7 +129,7 @@ function add_docker {
     sudo usermod -aG docker $USERNAME
 
     # docker compose
-    sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
+    sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
          sudo chmod 755 /usr/local/bin/docker-compose
 }
 
@@ -140,7 +141,7 @@ function add_kube_helm {
     sudo tar -zxvf $program --strip-components=1 -C /usr/local/bin/ linux-amd64/helm
     rm $program
 
-    curl -LO https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
     chmod u+x kubectl
     sudo mv kubectl /usr/local/bin/kubectl
 
@@ -157,9 +158,6 @@ function add_helmfile {
 
 function add_extras {
     sudo apt install -y libxml-simple-perl libdate-simple-perl gnuplot
-
-    wget http://www.yang-central.org/twiki/pub/Main/YangTools/yang.vim
-    sudo mv yang.vim /usr/share/vim/vim81/syntax
 }
 
 function add_cloud_software {
@@ -224,3 +222,4 @@ function main {
 }
 
 main "$@"
+exit 0
