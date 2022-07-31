@@ -2,14 +2,13 @@
 
 # global vars
 USERNAME=guest
-GERRIT=false
 BREW=false
 
 # programs that do not accept just "latest"
-HELM_VERSION="v3.8.0"
-HELMFILE_VERSION="v0.140.1"
-YQ_VERSION="v4.20.1"
-DOCKER_COMPOSE_VERSION="v2.2.3"
+HELM_VERSION="v3.9.0"
+HELMFILE_VERSION="0.145.2"
+YQ_VERSION="v4.26.1"
+DOCKER_COMPOSE_VERSION="v2.8.0"
 
 function add_basic_software {
     sudo apt install -y git curl vim-gtk3 tcpdump jq dos2unix \
@@ -24,6 +23,7 @@ function add_basic_software {
 }
 
 function add_brew_software {
+    export NONINTERACTIVE=yes # otherwise brew asks for confirmation
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
     echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> "$HOME/.profile"
@@ -38,79 +38,6 @@ function enable_ssh_server {
     sudo service ssh restart
 }
 
-function generate_key_and_wait {
-    ssh-keygen
-    echo "Now copy manually the public keys in the git repos"
-    while true; do
-        read -n 1 -p "Press [y/Y] when you're done or [q/Q] to quit]" answer
-        case $answer in
-                [Yy]* ) break;;
-                [Qq]* ) exit 0;;
-                * ) echo "I said yes or quit";;
-        esac
-     done
-}
-
-function set_git_credentials {
-    git config --global user.email "$(jq '."user-email"' gerrit.json)"
-    git config --global user.name "$(jq '."user-name"' gerrit.json)"
-}
-
-function clone_git_repos {
-    local target_dir
-    target_dir=$1
-    echo "target_dir: $target_dir"
-
-    local config_file
-    config_file=$2
-    echo "config_file: $config_file"
-
-    local host
-    host=$(jq -r '.host' "$config_file")
-    echo "host: ${host}"
-
-    local base_url
-    base_url=$(jq -r '."base-url"' "$config_file")
-    echo "base_url: ${base_url}"
-
-    local post_cmd
-    post_cmd=$(jq -r '."post-cmd"' "$config_file")
-    echo "post_cmd: ${post_cmd}"
-
-    local cwd
-    cwd=$(pwd)
-    echo "cwd: $cwd"
-
-    cat <<- EOG >> "$HOME/.ssh/config"
-Host $host
-    StrictHostKeyChecking no
-EOG
-    local families
-    local urls
-    families=$(jq -r '.families[] | .name' "$config_file")
-    for family in $families; do
-        echo "cloning repos for project family $family";
-        mkdir -p "$target_dir/$family"
-        pushd . > /dev/null
-        cd "$target_dir/$family" || exit
-        urls=$(jq -r --arg FAMILY "$family" '.families[] | select(.name==$FAMILY) | .projects[] | .url' "$cwd/$config_file")
-        echo "urls: " "${urls}"
-        for url in $urls; do
-            echo "cloning from: " "$base_url/$url"
-            git clone "$base_url/$url"
-            [ -n "$post_cmd" ] && [ "$post_cmd" != "null" ] && eval "$post_cmd"
-        done
-        popd > /dev/null
-    done
-}
-
-function generate_git_repos_dir {
-    local target_dir
-    target_dir=$1
-    mkdir -p "${target_dir}"
-    [ $? -ne 0 ] && echo "cannot create $target_dir" && exit 1
-}
-
 function add_docker {
     # Docker dependencies
     sudo apt install -y apt-transport-https ca-certificates gnupg gnupg-agent lsb-release software-properties-common
@@ -119,7 +46,7 @@ function add_docker {
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
 
     # 3) Docker repository
-    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(. /etc/os-release; echo "$UBUNTU_CODENAME") stable"
+    sudo add-apt-repository -y "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(. /etc/os-release; echo "$UBUNTU_CODENAME") stable"
     
     sudo apt-get update
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io
@@ -150,7 +77,9 @@ function add_kube_helm {
 }
 
 function add_helmfile {
-    wget https://github.com/roboll/helmfile/releases/download/${HELMFILE_VERSION}/helmfile_linux_amd64
+    wget https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
+    tar -zxvf helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
+    rm helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
     mv helmfile_linux_amd64 helmfile
     chmod u+x helmfile
     sudo mv helmfile /usr/local/bin
@@ -177,10 +106,6 @@ function parse_args {
                 USERNAME="${2}"
                 shift
                 ;;
-            --gerrit)
-                GERRIT="true"
-                shift
-                ;;
             --brew)
                 BREW="true"
                 shift
@@ -195,18 +120,10 @@ function parse_args {
 function help_and_exit {
     echo "usage: $0 [options] -u <USERNAME>"
     echo "  -h, --help          print this help and exit"
-    echo "  --gerrit            configure gerrit repos - needs a gerrit.json"
     echo "  --brew              add brew and software"
     echo "  -u <USERNAME>       USERNAME is you username in the Linux host"
     echo "prerequisites: git"
     exit 1
-}
-
-function add_gerrit_repos {
-    set_git_credentials
-    generate_key_and_wait
-    generate_git_repos_dir projects
-    clone_git_repos gerrit gerrit.json
 }
 
 function main {
@@ -215,7 +132,6 @@ function main {
     add_basic_software
     enable_ssh_server
     add_cloud_software
-    [ "${GERRIT}" == "true" ] && add_gerrit_repos
     [ "${BREW}" == "true" ] && add_brew_software
     add_extras
     echo "reboot to run docker as non-root"

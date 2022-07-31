@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# usage
+# launch this script from the directory (typically your HOME) where
+# you want to have your families of repositories, e.g.
+# HOME            <- launch from here
+#   +- gerrit
+#   +- github
+#   +- gitlab
+#   +- etc etc
+
+# and put in the same place your customized gerrit.json file
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+function generate_key_and_wait {
+    ssh-keygen
+    echo "Now copy manually the public keys in the git repos"
+    while true; do
+        read -n 1 -p "Press [y/Y] when you're done or [q/Q] to quit]" answer
+        case $answer in
+                [Yy]* ) break;;
+                [Qq]* ) exit 0;;
+                * ) echo "I said yes or quit";;
+        esac
+     done
+}
+
+function set_git_credentials {
+    git config --global user.email "$(jq '."user-email"' gerrit.json)"
+    git config --global user.name "$(jq '."user-name"' gerrit.json)"
+}
+
+function clone_git_repos {
+    local target_dir
+    target_dir=$1
+    echo "target_dir: $target_dir"
+
+    local config_file
+    config_file=$2
+    echo "config_file: $config_file"
+
+    local host
+    host=$(jq -r '.host' "$config_file")
+    echo "host: ${host}"
+
+    local base_url
+    base_url=$(jq -r '."base-url"' "$config_file")
+    echo "base_url: ${base_url}"
+
+    local cwd
+    cwd=$(pwd)
+    echo "cwd: $cwd"
+
+    cat <<- EOG >> "$HOME/.ssh/config"
+Host $host
+    StrictHostKeyChecking no
+EOG
+    local families
+    local urls
+    families=$(jq -r '.families[] | .name' "$config_file")
+    for family in $families; do
+        echo "cloning repos for project family $family";
+        mkdir -p "$target_dir/$family"
+        pushd . > /dev/null
+        cd "$target_dir/$family" || exit
+        urls=$(jq -r --arg FAMILY "$family" '.families[] | select(.name==$FAMILY) | .projects[] | .url' "$cwd/$config_file")
+        echo "urls: " "${urls}"
+        for url in $urls; do
+            echo "cloning from: " "$base_url/$url"
+            git clone "$base_url/$url"
+
+            # last part of the url is the project directory
+            project="${url##*/}"
+            cp $SCRIPT_DIR/commit-msg "$cwd/$target_dir/$family/$project/.git/hooks"
+        done
+        popd > /dev/null
+    done
+}
+
+function main {
+    set_git_credentials
+    generate_key_and_wait
+    mkdir -p gerrit
+    clone_git_repos gerrit gerrit.json
+}
+
+main "$@"
+exit 0

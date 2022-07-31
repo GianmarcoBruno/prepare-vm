@@ -3,11 +3,18 @@ A script for the configuration of an Ubuntu-based VM with little or no effort.
 
 It should work out of the box with:
 ```
-install [-u <USERNAME>] [--gerrit] [--brew]
+install [-u <USERNAME>] [--brew]
 ```
 USERNAME is assumed to be guest by default.
 
-If you want to install gerrit repos, you need a file gerrit.json like this:
+If you want to install gerrit repos, there is another script:
+```
+gerrit
+```
+
+To be launched typically from your $HOME.
+
+It expects in the same place a gerrit.json file like this:
 
 ```
 {
@@ -37,8 +44,9 @@ then will clone the project under that directory.
 
 You will be asked to copy manually the SSH keys in your gerrit.
 
-|  version | Ubuntu                                              | Mint (install git first) |
+|  version | Ubuntu                                              | Mint                     |
 | ---------| ----------------------------------------------------| -------------------------|
+| 2.0      | 22.04 :heavy_check_mark:                            |                          |
 | 1.2      | 20.04.3 :heavy_check_mark: 22.04 :heavy_check_mark: | 20.03 :heavy_check_mark: |
 | 1.1      | 20.04.3 :heavy_check_mark:                          | 20.03 :heavy_check_mark: |
 | 1.0      | 20.04.3 :heavy_check_mark:                          | :x: |
