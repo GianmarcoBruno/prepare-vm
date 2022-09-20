@@ -1,18 +1,19 @@
 #!/bin/bash
 
 # global vars
-USERNAME=guest
+USERNAME=
 BREW=false
 
 # programs that do not accept just "latest"
-HELM_VERSION="v3.9.0"
-HELMFILE_VERSION="0.145.2"
-YQ_VERSION="v4.26.1"
-DOCKER_COMPOSE_VERSION="v2.8.0"
+HELM_VERSION="v3.14.3"
+HELMFILE_VERSION="0.167.0"
+YQ_VERSION="v4.44.2"
+DOCKER_COMPOSE_VERSION="v2.29.1"
 
 function add_basic_software {
     sudo apt install -y git curl vim-gtk3 tcpdump jq dos2unix \
-        apache2-utils sshpass tree gitk mlocate maven net-tools xz-utils
+        apache2-utils sshpass tree gitk mlocate maven net-tools \
+	xz-utils python3-pip
 
     sudo wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 -O /usr/bin/yq && \
         sudo chmod +x /usr/bin/yq
@@ -20,6 +21,11 @@ function add_basic_software {
     wget -qO- "https://github.com/koalaman/shellcheck/releases/download/latest/shellcheck-latest.linux.x86_64.tar.xz" | tar -xJv
     sudo cp "shellcheck-latest/shellcheck" /usr/bin/
     rm -rf shellcheck-latest
+}
+
+function add_coding_software {
+    sudo apt install python3-pip \
+	maven openjdk-17-jdk openjdk-17-jre
 }
 
 function add_brew_software {
@@ -60,17 +66,36 @@ function add_docker {
          sudo chmod 755 /usr/local/bin/docker-compose
 }
 
-function add_kube_helm {
+function add_kubectl_and_plugins {
+    local program
+
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    chmod u+x kubectl
+    sudo mv kubectl /usr/local/bin/kubectl
+
+    # from https://krew.sigs.k8s.io/docs/user-guide/setup/install/ install krew
+    (
+      set -x; cd "$(mktemp -d)" &&
+      OS="$(uname | tr '[:upper:]' '[:lower:]')" &&
+      ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" &&
+      KREW="krew-${OS}_${ARCH}" &&
+      curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" &&
+      tar zxvf "${KREW}.tar.gz" &&
+      ./"${KREW}" install krew
+    )
+    echo "export PATH=\$HOME/.krew/bin:\$PATH" >> ~/.bashrc
+
+    # full path to work right now
+    PATH=$HOME/.krew/bin:$PATH kubectl krew install resource-capacity
+}
+
+function add_helm_and_plugins {
     local program
 
     program=helm-${HELM_VERSION}-linux-amd64.tar.gz
     wget https://get.helm.sh/${program}
     sudo tar -zxvf $program --strip-components=1 -C /usr/local/bin/ linux-amd64/helm
     rm $program
-
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-    chmod u+x kubectl
-    sudo mv kubectl /usr/local/bin/kubectl
 
     # install the helm diff plugin necessary for helmfile (default to latest)
     helm plugin install https://github.com/databus23/helm-diff
@@ -79,7 +104,7 @@ function add_kube_helm {
 function add_helmfile {
     wget https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
     tar -zxvf helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
-    rm helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
+    rm -f helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
     mv helmfile_linux_amd64 helmfile
     chmod u+x helmfile
     sudo mv helmfile /usr/local/bin
@@ -91,7 +116,8 @@ function add_extras {
 
 function add_cloud_software {
     add_docker
-    add_kube_helm
+    add_kubectl_and_plugins
+    add_helm_and_plugins
     add_helmfile
 }
 
@@ -115,6 +141,7 @@ function parse_args {
                 ;;
         esac
     done
+    [ -z "$USERNAME" ] && help_and_exit
 }
 
 function help_and_exit {
@@ -130,6 +157,7 @@ function main {
     parse_args "$@"
     sudo apt update
     add_basic_software
+    add_coding_software
     enable_ssh_server
     add_cloud_software
     [ "${BREW}" == "true" ] && add_brew_software

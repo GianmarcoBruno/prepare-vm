@@ -1,11 +1,12 @@
 # prepare-vm
-A script for the configuration of an Ubuntu-based VM with little or no effort.
+A script for the configuration of an Ubuntu-based running on VM
+or on Microsoft WSL with little or no effort.
 
-It should work out of the box with:
+It works out of the box with:
 ```
-install [-u <USERNAME>] [--brew]
+install -u <USERNAME> [--brew]
 ```
-USERNAME is assumed to be guest by default.
+USERNAME is your name on the Linux host.
 
 If you want to install gerrit repos, there is another script:
 ```
@@ -46,6 +47,7 @@ You will be asked to copy manually the SSH keys in your gerrit.
 
 |  version | Ubuntu                                              | Mint                     |
 | ---------| ----------------------------------------------------| -------------------------|
+| 3.0      | 22.04 :heavy_check_mark:                            |                          |
 | 2.0      | 22.04 :heavy_check_mark:                            |                          |
 | 1.2      | 20.04.3 :heavy_check_mark: 22.04 :heavy_check_mark: | 20.03 :heavy_check_mark: |
 | 1.1      | 20.04.3 :heavy_check_mark:                          | 20.03 :heavy_check_mark: |
