@@ -12,8 +12,8 @@ DOCKER_COMPOSE_VERSION="v2.8.0"
 
 function add_basic_software {
     sudo apt install -y git curl vim-gtk3 tcpdump jq dos2unix \
-        apache2-utils sshpass tree gitk mlocate maven net-tools \
-	xz-utils python3-pip
+        apache2-utils sshpass tree gitk mlocate net-tools \
+	xz-utils
 
     sudo wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 -O /usr/bin/yq && \
         sudo chmod +x /usr/bin/yq
@@ -21,6 +21,11 @@ function add_basic_software {
     wget -qO- "https://github.com/koalaman/shellcheck/releases/download/latest/shellcheck-latest.linux.x86_64.tar.xz" | tar -xJv
     sudo cp "shellcheck-latest/shellcheck" /usr/bin/
     rm -rf shellcheck-latest
+}
+
+function add_coding_software {
+    sudo apt install python3-pip \
+	maven openjdk-17-jdk openjdk-17-jre
 }
 
 function add_brew_software {
@@ -131,6 +136,7 @@ function main {
     parse_args "$@"
     sudo apt update
     add_basic_software
+    add_coding_software
     enable_ssh_server
     add_cloud_software
     [ "${BREW}" == "true" ] && add_brew_software

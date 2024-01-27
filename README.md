@@ -1,7 +1,7 @@
 # prepare-vm
 A script for the configuration of an Ubuntu-based VM with little or no effort.
 
-It should work out of the box with:
+It works out of the box with:
 ```
 install [-u <USERNAME>] [--brew]
 ```
